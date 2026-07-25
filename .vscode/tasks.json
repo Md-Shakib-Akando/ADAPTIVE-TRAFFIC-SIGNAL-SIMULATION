@@ -1,0 +1,41 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build Traffic Simulation",
+            "type": "shell",
+            "command": "g++.exe",
+            "args": [
+                "-std=c++17",
+                "-fdiagnostics-color=always",
+                "-g",
+                "main.cpp",
+                "Vehicle.cpp",
+                "TrafficLight.cpp",
+                "Intersection.cpp",
+                "HUD.cpp",
+                "-o",
+                "${fileDirname}\\traffic_sim.exe",
+                "-lbgi",
+                "-lgdi32",
+                "-lcomdlg32",
+                "-luuid",
+                "-loleaut32",
+                "-lole32"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": [
+                "$gcc"
+            ]
+        },
+        {
+            "label": "Run Traffic Simulation",
+            "type": "shell",
+            "command": "${fileDirname}\\traffic_sim.exe",
+            "dependsOn": "Build Traffic Simulation"
+        }
+    ]
+}
