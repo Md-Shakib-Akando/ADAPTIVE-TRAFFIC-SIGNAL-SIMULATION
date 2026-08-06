@@ -8,6 +8,7 @@
 
 ---
 
+
 ## 📌 Project Overview
 
 Traditional traffic signals rely on fixed-duration timers, which frequently cause unnecessary congestion: green lights stay active for empty lanes while vehicles queue up on opposing approaches. 
