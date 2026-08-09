@@ -4,7 +4,10 @@
 
 IntersectionManager::IntersectionManager()
     : nextVehicleId(1), countSouth(0), countNorth(0), countEast(0), countWest(0),
-      totalClearedVehicles(0), totalAccumulatedWaitTime(0.0), autoSpawnEnabled(true) {
+      totalClearedVehicles(0), totalAccumulatedWaitTime(0.0), autoSpawnEnabled(true),
+      isDeadlocked(false), deadlockDuration(0.0f), deadlocksDetectedCount(0),
+      deadlocksResolvedCount(0), boxOccupantCount(0), antiDeadlockGuard(true),
+      resolvingDeadlock(false), resolveTimer(0.0f), resolveDirection(0), starvationDetected(false) {
 
     for (int i = 0; i < 4; ++i) {
         spawnTimers[i] = 0.0f;
@@ -20,23 +23,23 @@ float IntersectionManager::getAverageWaitTime() const {
 float IntersectionManager::calculateDistanceToAhead(const Vehicle& curr, const Vehicle& ahead) const {
     switch (curr.dir) {
         case DIR_SOUTH: {
-            float aheadRear = ahead.y - CAR_LENGTH / 2.0f;
-            float currFront = curr.y + CAR_LENGTH / 2.0f;
+            float aheadRear = ahead.getRearBumperPos();
+            float currFront = curr.getFrontBumperPos();
             return aheadRear - currFront;
         }
         case DIR_NORTH: {
-            float aheadRear = ahead.y + CAR_LENGTH / 2.0f;
-            float currFront = curr.y - CAR_LENGTH / 2.0f;
+            float aheadRear = ahead.getRearBumperPos();
+            float currFront = curr.getFrontBumperPos();
             return currFront - aheadRear;
         }
         case DIR_EAST: {
-            float aheadRear = ahead.x - CAR_LENGTH / 2.0f;
-            float currFront = curr.x + CAR_LENGTH / 2.0f;
+            float aheadRear = ahead.getRearBumperPos();
+            float currFront = curr.getFrontBumperPos();
             return aheadRear - currFront;
         }
         case DIR_WEST: {
-            float aheadRear = ahead.x + CAR_LENGTH / 2.0f;
-            float currFront = curr.x - CAR_LENGTH / 2.0f;
+            float aheadRear = ahead.getRearBumperPos();
+            float currFront = curr.getFrontBumperPos();
             return currFront - aheadRear;
         }
     }
@@ -55,14 +58,15 @@ float IntersectionManager::calculateDistanceToStopLine(const Vehicle& curr) cons
 }
 
 bool IntersectionManager::spawnVehicle(Direction dir, double currentTime) {
-    // Check if spawn zone is clear
+    // Check if spawn zone is clear (ensure enough room for largest vehicle + safe gap)
+    const float minSpawnClearance = 70.0f;
     for (const auto& v : vehicles) {
         if (v.dir == dir) {
             float rear = v.getRearBumperPos();
-            if (dir == DIR_SOUTH && rear < (CAR_LENGTH + 20.0f)) return false;
-            if (dir == DIR_NORTH && rear > (SCREEN_HEIGHT - CAR_LENGTH - 20.0f)) return false;
-            if (dir == DIR_EAST  && rear < (CAR_LENGTH + 20.0f)) return false;
-            if (dir == DIR_WEST  && rear > (SCREEN_WIDTH - CAR_LENGTH - 20.0f)) return false;
+            if (dir == DIR_SOUTH && rear < minSpawnClearance) return false;
+            if (dir == DIR_NORTH && rear > (SCREEN_HEIGHT - minSpawnClearance)) return false;
+            if (dir == DIR_EAST  && rear < minSpawnClearance) return false;
+            if (dir == DIR_WEST  && rear > (SCREEN_WIDTH - minSpawnClearance)) return false;
         }
     }
 
@@ -80,6 +84,10 @@ void IntersectionManager::triggerBurstSpawn(double currentTime) {
 void IntersectionManager::clearAllVehicles() {
     vehicles.clear();
     countSouth = countNorth = countEast = countWest = 0;
+    isDeadlocked = false;
+    resolvingDeadlock = false;
+    deadlockDuration = 0.0f;
+    boxOccupantCount = 0;
 }
 
 bool IntersectionManager::handleMouseClick(int mx, int my, double currentTime) {
@@ -100,9 +108,191 @@ bool IntersectionManager::handleMouseClick(int mx, int my, double currentTime) {
     return false;
 }
 
+// ---------------------- Deadlock System Methods ----------------------
+
+bool IntersectionManager::isBoxExitClear(Direction dir, float vehicleLength) const {
+    if (!antiDeadlockGuard) return true; // Prevention guard disabled
+
+    for (const auto& v : vehicles) {
+        if (v.dir == dir) {
+            float rear = v.getRearBumperPos();
+            switch (dir) {
+                case DIR_SOUTH:
+                    if (rear > ROAD_BOTTOM && rear < (ROAD_BOTTOM + vehicleLength + 15.0f) && v.speed < 0.2f) {
+                        return false;
+                    }
+                    break;
+                case DIR_NORTH:
+                    if (rear < ROAD_TOP && rear > (ROAD_TOP - vehicleLength - 15.0f) && v.speed < 0.2f) {
+                        return false;
+                    }
+                    break;
+                case DIR_EAST:
+                    if (rear > ROAD_RIGHT && rear < (ROAD_RIGHT + vehicleLength + 15.0f) && v.speed < 0.2f) {
+                        return false;
+                    }
+                    break;
+                case DIR_WEST:
+                    if (rear < ROAD_LEFT && rear > (ROAD_LEFT - vehicleLength - 15.0f) && v.speed < 0.2f) {
+                        return false;
+                    }
+                    break;
+            }
+        }
+    }
+    return true;
+}
+
+void IntersectionManager::checkDeadlock(float dt) {
+    boxOccupantCount = 0;
+    int stoppedInBoxNS = 0;
+    int stoppedInBoxEW = 0;
+    starvationDetected = false;
+
+    for (auto& v : vehicles) {
+        if (v.isInIntersectionBox()) {
+            boxOccupantCount++;
+            if (v.boxWaitTime >= DEADLOCK_WAIT_THRESHOLD) {
+                if (v.dir == DIR_SOUTH || v.dir == DIR_NORTH) stoppedInBoxNS++;
+                else stoppedInBoxEW++;
+            }
+        }
+
+        if (v.isStopped && v.totalWaitTime >= STARVATION_THRESHOLD) {
+            starvationDetected = true;
+        }
+    }
+
+    // Deadlock condition: conflicting vehicles immobilized inside the intersection box
+    bool currentlyStuck = (stoppedInBoxNS > 0 && stoppedInBoxEW > 0) ||
+                          (boxOccupantCount >= 3 && (stoppedInBoxNS + stoppedInBoxEW >= 2));
+
+    if (currentlyStuck) {
+        if (!isDeadlocked) {
+            isDeadlocked = true;
+            deadlockDuration = 0.0f;
+            deadlocksDetectedCount++;
+        }
+        deadlockDuration += dt;
+
+        // Highlight trapped vehicles
+        for (auto& v : vehicles) {
+            if (v.isInIntersectionBox() && v.boxWaitTime >= 0.5f) {
+                v.inDeadlock = true;
+            }
+        }
+
+        // Auto-resolve after threshold
+        if (deadlockDuration >= DEADLOCK_AUTO_RESOLVE_DELAY && !resolvingDeadlock) {
+            resolveDeadlock();
+        }
+    } else {
+        if (boxOccupantCount == 0 || (stoppedInBoxNS == 0 && stoppedInBoxEW == 0)) {
+            if (isDeadlocked && resolvingDeadlock) {
+                deadlocksResolvedCount++;
+            }
+            isDeadlocked = false;
+            resolvingDeadlock = false;
+            deadlockDuration = 0.0f;
+            for (auto& v : vehicles) {
+                v.inDeadlock = false;
+            }
+        }
+    }
+}
+
+void IntersectionManager::resolveDeadlock() {
+    resolvingDeadlock = true;
+    resolveTimer = 0.0f;
+
+    // Prioritize clearing whichever direction has stuck vehicles
+    bool hasNS = false, hasEW = false;
+    for (const auto& v : vehicles) {
+        if (v.isInIntersectionBox()) {
+            if (v.dir == DIR_SOUTH || v.dir == DIR_NORTH) hasNS = true;
+            if (v.dir == DIR_EAST || v.dir == DIR_WEST) hasEW = true;
+        }
+    }
+
+    if (hasNS) {
+        lightController.setPhase(PHASE_NS_GREEN, 8.0f);
+    } else if (hasEW) {
+        lightController.setPhase(PHASE_EW_GREEN, 8.0f);
+    } else {
+        lightController.setPhase(PHASE_NS_GREEN, 6.0f);
+    }
+
+    for (auto& v : vehicles) {
+        v.inDeadlock = false;
+    }
+}
+
+void IntersectionManager::forceDeadlockScenario(double currentTime) {
+    // 4-Way Gridlock Simulation Demonstration
+    clearAllVehicles();
+
+    // 1. Heading South
+    Vehicle vSouth(nextVehicleId++, DIR_SOUTH, currentTime);
+    vSouth.x = LANE_SOUTH_X;
+    vSouth.y = ROAD_TOP + 40.0f;
+    vSouth.speed = 0.0f;
+    vSouth.targetSpeed = 0.0f;
+    vSouth.boxWaitTime = DEADLOCK_WAIT_THRESHOLD + 0.5f;
+    vSouth.isStopped = true;
+    vSouth.hasPassedStopLine = true;
+    vSouth.inDeadlock = true;
+    vehicles.push_back(vSouth);
+
+    // 2. Heading East
+    Vehicle vEast(nextVehicleId++, DIR_EAST, currentTime);
+    vEast.x = ROAD_LEFT + 40.0f;
+    vEast.y = LANE_EAST_Y;
+    vEast.speed = 0.0f;
+    vEast.targetSpeed = 0.0f;
+    vEast.boxWaitTime = DEADLOCK_WAIT_THRESHOLD + 0.5f;
+    vEast.isStopped = true;
+    vEast.hasPassedStopLine = true;
+    vEast.inDeadlock = true;
+    vehicles.push_back(vEast);
+
+    // 3. Heading North
+    Vehicle vNorth(nextVehicleId++, DIR_NORTH, currentTime);
+    vNorth.x = LANE_NORTH_X;
+    vNorth.y = ROAD_BOTTOM - 40.0f;
+    vNorth.speed = 0.0f;
+    vNorth.targetSpeed = 0.0f;
+    vNorth.boxWaitTime = DEADLOCK_WAIT_THRESHOLD + 0.5f;
+    vNorth.isStopped = true;
+    vNorth.hasPassedStopLine = true;
+    vNorth.inDeadlock = true;
+    vehicles.push_back(vNorth);
+
+    // 4. Heading West
+    Vehicle vWest(nextVehicleId++, DIR_WEST, currentTime);
+    vWest.x = ROAD_RIGHT - 40.0f;
+    vWest.y = LANE_WEST_Y;
+    vWest.speed = 0.0f;
+    vWest.targetSpeed = 0.0f;
+    vWest.boxWaitTime = DEADLOCK_WAIT_THRESHOLD + 0.5f;
+    vWest.isStopped = true;
+    vWest.hasPassedStopLine = true;
+    vWest.inDeadlock = true;
+    vehicles.push_back(vWest);
+
+    isDeadlocked = true;
+    deadlockDuration = 0.0f;
+    deadlocksDetectedCount++;
+}
+
+void IntersectionManager::toggleAntiDeadlockGuard() {
+    antiDeadlockGuard = !antiDeadlockGuard;
+}
+
+// ---------------------- Main Update Cycle ----------------------
+
 void IntersectionManager::update(float dt, double currentTime) {
     // 1. Automatic Vehicle Spawning
-    if (autoSpawnEnabled) {
+    if (autoSpawnEnabled && !isDeadlocked) {
         for (int d = 0; d < 4; ++d) {
             spawnTimers[d] += dt;
             if (spawnTimers[d] >= spawnIntervals[d]) {
@@ -154,7 +344,16 @@ void IntersectionManager::update(float dt, double currentTime) {
             }
             float distStop = calculateDistanceToStopLine(*v);
 
-            v->update(dt, distAhead, distStop, isGreen, currentTime);
+            // Anti-Deadlock "Don't Block the Box" Guard:
+            // If green but receiving exit across intersection is blocked, treat light as red at stop line
+            bool effectiveGreen = isGreen;
+            if (isGreen && !v->hasPassedStopLine && antiDeadlockGuard) {
+                if (!isBoxExitClear(v->dir, static_cast<float>(v->length))) {
+                    effectiveGreen = false; // Hold at stop line to prevent box gridlock
+                }
+            }
+
+            v->update(dt, distAhead, distStop, effectiveGreen, currentTime);
 
             if (v->inDetectionZone) {
                 if (dir == DIR_SOUTH) countSouth++;
@@ -165,16 +364,26 @@ void IntersectionManager::update(float dt, double currentTime) {
         }
     }
 
-    // 4. Update Traffic Light Controller with live counts
-    lightController.update(dt, countNorth, countSouth, countEast, countWest);
+    // 4. Update Traffic Light Controller with live counts (unless resolving deadlock priority)
+    if (!resolvingDeadlock) {
+        lightController.update(dt, countNorth, countSouth, countEast, countWest);
+    } else {
+        lightController.timeRemaining -= dt;
+        if (lightController.timeRemaining <= 0.0f) {
+            resolvingDeadlock = false;
+        }
+    }
 
-    // 5. Clean up vehicles that have left the screen & accumulate metrics
+    // 5. Run Deadlock Detection & Starvation monitor
+    checkDeadlock(dt);
+
+    // 6. Clean up vehicles that have left the screen & accumulate metrics
     for (auto it = vehicles.begin(); it != vehicles.end(); ) {
         bool offScreen = false;
-        if (it->dir == DIR_SOUTH && it->y > (SCREEN_HEIGHT + CAR_LENGTH * 2)) offScreen = true;
-        if (it->dir == DIR_NORTH && it->y < (-CAR_LENGTH * 2)) offScreen = true;
-        if (it->dir == DIR_EAST  && it->x > (SCREEN_WIDTH + CAR_LENGTH * 2)) offScreen = true;
-        if (it->dir == DIR_WEST  && it->x < (-CAR_LENGTH * 2)) offScreen = true;
+        if (it->dir == DIR_SOUTH && it->y > (SCREEN_HEIGHT + it->length * 2)) offScreen = true;
+        if (it->dir == DIR_NORTH && it->y < (-it->length * 2)) offScreen = true;
+        if (it->dir == DIR_EAST  && it->x > (SCREEN_WIDTH + it->length * 2)) offScreen = true;
+        if (it->dir == DIR_WEST  && it->x < (-it->length * 2)) offScreen = true;
 
         if (offScreen) {
             totalClearedVehicles++;
@@ -191,3 +400,4 @@ void IntersectionManager::drawVehicles() const {
         v.draw();
     }
 }
+

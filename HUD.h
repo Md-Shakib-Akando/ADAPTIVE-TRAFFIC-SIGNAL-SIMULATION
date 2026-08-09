@@ -12,6 +12,7 @@ public:
     void drawDetectionZones(const IntersectionManager& manager) const;
     void drawTrafficLights(const TrafficLightController& lightController) const;
     void drawDashboard(const IntersectionManager& manager, float fps, bool isPaused) const;
+    void drawDeadlockOverlay(const IntersectionManager& manager) const;
 
 private:
     void drawTrafficLightBox(int x, int y, bool isRed, bool isYellow, bool isGreen) const;

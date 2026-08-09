@@ -51,6 +51,11 @@ const float YELLOW_TIME     = 3.0f;
 const float TIME_PER_CAR    = 1.5f; // Extra green seconds per waiting car in adaptive mode
 const float FIXED_GREEN_TIME = 8.0f;
 
+// Deadlock & Gridlock Management Constants
+const float DEADLOCK_WAIT_THRESHOLD = 2.5f; // Seconds stationary in intersection box before deadlock declared
+const float STARVATION_THRESHOLD = 18.0f;   // Seconds stuck waiting before starvation warning
+const float DEADLOCK_AUTO_RESOLVE_DELAY = 6.0f; // Auto-resolve delay after deadlock occurs
+
 enum Direction {
     DIR_SOUTH = 0, // Moving from top to bottom
     DIR_NORTH = 1, // Moving from bottom to top
@@ -68,6 +73,17 @@ enum SignalPhase {
 enum ControlMode {
     MODE_ADAPTIVE = 0,
     MODE_FIXED    = 1
+};
+
+enum VehicleType {
+    VEHICLE_SEDAN = 0,
+    VEHICLE_SUV,
+    VEHICLE_BUS,
+    VEHICLE_BIKE,
+    VEHICLE_TRUCK,
+    VEHICLE_TAXI,
+    VEHICLE_AMBULANCE,
+    VEHICLE_TYPE_COUNT
 };
 
 #endif // CONFIG_H

@@ -20,9 +20,21 @@ public:
     int countEast;  // Vehicles heading East in left detection zone
     int countWest;  // Vehicles heading West in right detection zone
 
-    // Performance Metrics
+    // Performance & Deadlock Metrics
     int totalClearedVehicles;
     double totalAccumulatedWaitTime;
+
+    // Deadlock & Gridlock Management
+    bool isDeadlocked;
+    float deadlockDuration;
+    int deadlocksDetectedCount;
+    int deadlocksResolvedCount;
+    int boxOccupantCount;
+    bool antiDeadlockGuard;
+    bool resolvingDeadlock;
+    float resolveTimer;
+    int resolveDirection;
+    bool starvationDetected;
 
     bool autoSpawnEnabled;
 
@@ -35,6 +47,13 @@ public:
     void triggerBurstSpawn(double currentTime);
     void clearAllVehicles();
     bool handleMouseClick(int mx, int my, double currentTime);
+
+    // Deadlock Control Methods
+    void checkDeadlock(float dt);
+    void resolveDeadlock();
+    void forceDeadlockScenario(double currentTime);
+    void toggleAntiDeadlockGuard();
+    bool isBoxExitClear(Direction dir, float vehicleLength) const;
 
     float getAverageWaitTime() const;
 

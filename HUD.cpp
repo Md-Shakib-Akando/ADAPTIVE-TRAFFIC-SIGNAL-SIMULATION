@@ -128,6 +128,26 @@ void HUD::drawTrafficLights(const TrafficLightController& lightController) const
     drawTrafficLightBox(ROAD_RIGHT + 8, ROAD_TOP - 70, ewRed, ewYellow, ewGreen);
 }
 
+void HUD::drawDeadlockOverlay(const IntersectionManager& manager) const {
+    if (manager.isDeadlocked) {
+        // Flashing Warning Border around the intersection box
+        setcolor(COLOR(255, 40, 40));
+        rectangle(ROAD_LEFT - 2, ROAD_TOP - 2, ROAD_RIGHT + 2, ROAD_BOTTOM + 2);
+        rectangle(ROAD_LEFT - 4, ROAD_TOP - 4, ROAD_RIGHT + 4, ROAD_BOTTOM + 4);
+        setcolor(COLOR(255, 220, 0));
+        rectangle(ROAD_LEFT - 6, ROAD_TOP - 6, ROAD_RIGHT + 6, ROAD_BOTTOM + 6);
+
+        // Center Gridlock Alert Label
+        setfillstyle(SOLID_FILL, COLOR(200, 20, 20));
+        bar(CENTER_X - 60, CENTER_Y - 12, CENTER_X + 60, CENTER_Y + 12);
+        setcolor(WHITE);
+        rectangle(CENTER_X - 60, CENTER_Y - 12, CENTER_X + 60, CENTER_Y + 12);
+        setbkcolor(COLOR(200, 20, 20));
+        outtextxy(CENTER_X - 52, CENTER_Y - 6, (char*)"GRIDLOCK STALL");
+        setbkcolor(COLOR(15, 22, 32));
+    }
+}
+
 void HUD::drawDashboard(const IntersectionManager& manager, float fps, bool isPaused) const {
     int panelLeft   = HUD_X_START;
     int panelTop    = 10;
@@ -139,7 +159,7 @@ void HUD::drawDashboard(const IntersectionManager& manager, float fps, bool isPa
     bar(panelLeft, panelTop, panelRight, panelBottom);
 
     // Border Accent
-    setcolor(COLOR(50, 140, 220));
+    setcolor(manager.isDeadlocked ? COLOR(240, 60, 60) : COLOR(50, 140, 220));
     rectangle(panelLeft, panelTop, panelRight, panelBottom);
     rectangle(panelLeft + 2, panelTop + 2, panelRight - 2, panelBottom - 2);
 
@@ -148,30 +168,54 @@ void HUD::drawDashboard(const IntersectionManager& manager, float fps, bool isPa
 
     // Header Title
     setcolor(COLOR(240, 245, 255));
-    outtextxy(panelLeft + 15, panelTop + 15, (char*)"SMART TRAFFIC CONTROL");
+    outtextxy(panelLeft + 15, panelTop + 12, (char*)"SMART TRAFFIC CONTROL");
 
     setcolor(COLOR(120, 160, 200));
-    outtextxy(panelLeft + 15, panelTop + 32, (char*)"Adaptive 2D Density Simulation");
+    outtextxy(panelLeft + 15, panelTop + 28, (char*)"Adaptive 2D Density Simulation");
 
     setcolor(COLOR(60, 80, 100));
-    line(panelLeft + 10, panelTop + 52, panelRight - 10, panelTop + 52);
+    line(panelLeft + 10, panelTop + 46, panelRight - 10, panelTop + 46);
 
-    // 1. SYSTEM CONTROL MODE BADGE
-    int modeY = panelTop + 62;
+    // 1. SYSTEM CONTROL MODE & DEADLOCK STATUS BADGES
+    int modeY = panelTop + 54;
     if (manager.lightController.mode == MODE_ADAPTIVE) {
         setfillstyle(SOLID_FILL, COLOR(20, 100, 50));
-        bar(panelLeft + 15, modeY, panelRight - 15, modeY + 28);
+        bar(panelLeft + 15, modeY, panelRight - 15, modeY + 24);
         setcolor(COLOR(100, 255, 150));
-        outtextxy(panelLeft + 30, modeY + 6, (char*)"[ MODE: ADAPTIVE SMART ]");
+        outtextxy(panelLeft + 30, modeY + 4, (char*)"[ MODE: ADAPTIVE SMART ]");
     } else {
         setfillstyle(SOLID_FILL, COLOR(120, 70, 10));
-        bar(panelLeft + 15, modeY, panelRight - 15, modeY + 28);
+        bar(panelLeft + 15, modeY, panelRight - 15, modeY + 24);
         setcolor(COLOR(255, 200, 100));
-        outtextxy(panelLeft + 35, modeY + 6, (char*)"[ MODE: FIXED TIMER ]");
+        outtextxy(panelLeft + 35, modeY + 4, (char*)"[ MODE: FIXED TIMER ]");
+    }
+
+    // Deadlock Status Banner
+    int deadY = modeY + 30;
+    if (manager.isDeadlocked) {
+        setfillstyle(SOLID_FILL, COLOR(180, 25, 25));
+        bar(panelLeft + 15, deadY, panelRight - 15, deadY + 26);
+        setcolor(COLOR(255, 255, 100));
+        outtextxy(panelLeft + 22, deadY + 5, (char*)"[ ! DEADLOCK DETECTED ! ]");
+    } else if (manager.resolvingDeadlock) {
+        setfillstyle(SOLID_FILL, COLOR(25, 110, 160));
+        bar(panelLeft + 15, deadY, panelRight - 15, deadY + 26);
+        setcolor(COLOR(160, 240, 255));
+        outtextxy(panelLeft + 20, deadY + 5, (char*)"[ RESOLVING: PRIORITY WAVE ]");
+    } else if (manager.starvationDetected) {
+        setfillstyle(SOLID_FILL, COLOR(150, 90, 15));
+        bar(panelLeft + 15, deadY, panelRight - 15, deadY + 26);
+        setcolor(COLOR(255, 220, 120));
+        outtextxy(panelLeft + 20, deadY + 5, (char*)"[ WARNING: STARVATION WAIT ]");
+    } else {
+        setfillstyle(SOLID_FILL, COLOR(25, 45, 70));
+        bar(panelLeft + 15, deadY, panelRight - 15, deadY + 26);
+        setcolor(COLOR(120, 200, 255));
+        outtextxy(panelLeft + 32, deadY + 5, (char*)"[ STATUS: TRAFFIC FLOWING ]");
     }
 
     // 2. SIGNAL PHASE & COUNTDOWN TIMER
-    int phaseY = modeY + 40;
+    int phaseY = deadY + 34;
     setcolor(COLOR(200, 210, 225));
     outtextxy(panelLeft + 15, phaseY, (char*)"ACTIVE PHASE:");
 
@@ -183,7 +227,7 @@ void HUD::drawDashboard(const IntersectionManager& manager, float fps, bool isPa
     if (manager.lightController.isEastWestYellow())   { phaseStr = "EAST-WEST YELLOW"; phaseColor = YELLOW; }
 
     setcolor(phaseColor);
-    outtextxy(panelLeft + 15, phaseY + 18, (char*)phaseStr);
+    outtextxy(panelLeft + 15, phaseY + 16, (char*)phaseStr);
 
     // Countdown bar
     float rem = manager.lightController.timeRemaining;
@@ -191,9 +235,9 @@ void HUD::drawDashboard(const IntersectionManager& manager, float fps, bool isPa
     float pct = std::max(0.0f, std::min(1.0f, rem / (dur > 0.0f ? dur : 1.0f)));
 
     int barX = panelLeft + 15;
-    int barY = phaseY + 38;
+    int barY = phaseY + 34;
     int barW = panelRight - panelLeft - 30;
-    int barH = 14;
+    int barH = 12;
 
     setfillstyle(SOLID_FILL, COLOR(30, 40, 55));
     bar(barX, barY, barX + barW, barY + barH);
@@ -203,13 +247,13 @@ void HUD::drawDashboard(const IntersectionManager& manager, float fps, bool isPa
 
     setcolor(COLOR(240, 240, 240));
     std::snprintf(buf, sizeof(buf), "%.1f sec remaining", rem);
-    outtextxy(panelLeft + 15, barY + 18, buf);
+    outtextxy(panelLeft + 15, barY + 15, buf);
 
     setcolor(COLOR(60, 80, 100));
-    line(panelLeft + 10, barY + 40, panelRight - 10, barY + 40);
+    line(panelLeft + 10, barY + 34, panelRight - 10, barY + 34);
 
     // 3. REAL-TIME LANE DETECTION COUNTS
-    int countY = barY + 50;
+    int countY = barY + 42;
     setcolor(COLOR(200, 210, 225));
     outtextxy(panelLeft + 15, countY, (char*)"LANE DETECTION COUNTS:");
 
@@ -223,16 +267,15 @@ void HUD::drawDashboard(const IntersectionManager& manager, float fps, bool isPa
         { "Westbound (Right):", manager.countWest }
     };
 
-    int appY = countY + 20;
+    int appY = countY + 18;
     for (int i = 0; i < 4; ++i) {
         setcolor(COLOR(170, 185, 205));
         std::snprintf(buf, sizeof(buf), "%-18s %d cars", approaches[i].name, approaches[i].count);
         outtextxy(panelLeft + 15, appY, buf);
 
-        // Density Indicator Bar
         int dBarX = panelLeft + 185;
         int dBarW = 65;
-        int dBarH = 10;
+        int dBarH = 9;
         int filledW = std::min(dBarW, approaches[i].count * 13);
 
         setfillstyle(SOLID_FILL, COLOR(30, 40, 50));
@@ -242,47 +285,55 @@ void HUD::drawDashboard(const IntersectionManager& manager, float fps, bool isPa
         setfillstyle(SOLID_FILL, densityColor);
         bar(dBarX, appY + 3, dBarX + filledW, appY + 3 + dBarH);
 
-        appY += 22;
+        appY += 19;
     }
 
     setcolor(COLOR(60, 80, 100));
-    line(panelLeft + 10, appY + 5, panelRight - 10, appY + 5);
+    line(panelLeft + 10, appY + 4, panelRight - 10, appY + 4);
 
-    // 4. PERFORMANCE METRICS
-    int metricY = appY + 15;
+    // 4. PERFORMANCE & DEADLOCK METRICS
+    int metricY = appY + 12;
     setcolor(COLOR(200, 210, 225));
-    outtextxy(panelLeft + 15, metricY, (char*)"SYSTEM METRICS:");
+    outtextxy(panelLeft + 15, metricY, (char*)"SYSTEM & DEADLOCK METRICS:");
 
-    std::snprintf(buf, sizeof(buf), "Cleared Vehicles:  %d", manager.totalClearedVehicles);
+    std::snprintf(buf, sizeof(buf), "Cleared: %d | Wait: %.1fs", manager.totalClearedVehicles, manager.getAverageWaitTime());
     setcolor(COLOR(170, 185, 205));
-    outtextxy(panelLeft + 15, metricY + 20, buf);
+    outtextxy(panelLeft + 15, metricY + 17, buf);
 
-    std::snprintf(buf, sizeof(buf), "Avg Vehicle Wait:  %.2f s", manager.getAverageWaitTime());
-    outtextxy(panelLeft + 15, metricY + 38, buf);
+    std::snprintf(buf, sizeof(buf), "Deadlocks: %d Det / %d Res", manager.deadlocksDetectedCount, manager.deadlocksResolvedCount);
+    setcolor(manager.isDeadlocked ? COLOR(255, 100, 100) : COLOR(170, 185, 205));
+    outtextxy(panelLeft + 15, metricY + 33, buf);
 
-    std::snprintf(buf, sizeof(buf), "Simulation Speed:  %.0f FPS", fps);
-    outtextxy(panelLeft + 15, metricY + 56, buf);
+    std::snprintf(buf, sizeof(buf), "Box Occupants: %d  |  FPS: %.0f", manager.boxOccupantCount, fps);
+    setcolor(COLOR(170, 185, 205));
+    outtextxy(panelLeft + 15, metricY + 49, buf);
+
+    // Anti-Deadlock Guard Indicator
+    std::snprintf(buf, sizeof(buf), "Anti-Deadlock Guard: %s", manager.antiDeadlockGuard ? "[ ACTIVE ]" : "[ DISABLED ]");
+    setcolor(manager.antiDeadlockGuard ? COLOR(100, 240, 150) : COLOR(255, 180, 50));
+    outtextxy(panelLeft + 15, metricY + 65, buf);
 
     setcolor(COLOR(60, 80, 100));
-    line(panelLeft + 10, metricY + 78, panelRight - 10, metricY + 78);
+    line(panelLeft + 10, metricY + 83, panelRight - 10, metricY + 83);
 
     // 5. USER CONTROLS LEGEND
-    int ctrlY = metricY + 88;
+    int ctrlY = metricY + 91;
     setcolor(COLOR(240, 200, 80));
     outtextxy(panelLeft + 15, ctrlY, (char*)"INTERACTIVE CONTROLS:");
 
     setcolor(COLOR(140, 160, 185));
-    outtextxy(panelLeft + 15, ctrlY + 20, (char*)"[N/S/E/W] Add Car to Lane");
-    outtextxy(panelLeft + 15, ctrlY + 36, (char*)"[Mouse]   Click Road to Add");
-    outtextxy(panelLeft + 15, ctrlY + 52, (char*)"[M]       Toggle Mode (Adaptive/Fixed)");
-    outtextxy(panelLeft + 15, ctrlY + 68, (char*)"[B]       Burst Traffic Spike");
-    outtextxy(panelLeft + 15, ctrlY + 84, (char*)"[C]       Clear All Cars");
+    outtextxy(panelLeft + 15, ctrlY + 16, (char*)"[N/S/E/W] Spawn Mixed Vehicle");
+    outtextxy(panelLeft + 15, ctrlY + 30, (char*)"[D]       Force Deadlock Demo");
+    outtextxy(panelLeft + 15, ctrlY + 44, (char*)"[R]       Resolve Deadlock");
+    outtextxy(panelLeft + 15, ctrlY + 58, (char*)"[X]       Toggle Anti-Deadlock");
+    outtextxy(panelLeft + 15, ctrlY + 72, (char*)"[M]       Toggle Mode (Adap/Fix)");
+    outtextxy(panelLeft + 15, ctrlY + 86, (char*)"[B]       Burst Spike | [C] Clear");
     outtextxy(panelLeft + 15, ctrlY + 100, (char*)"[P]       Pause / Resume");
 
     if (isPaused) {
         setfillstyle(SOLID_FILL, RED);
-        bar(panelLeft + 15, panelBottom - 35, panelRight - 15, panelBottom - 10);
+        bar(panelLeft + 15, panelBottom - 30, panelRight - 15, panelBottom - 8);
         setcolor(WHITE);
-        outtextxy(panelLeft + 70, panelBottom - 28, (char*)"*** SIMULATION PAUSED ***");
+        outtextxy(panelLeft + 70, panelBottom - 24, (char*)"*** SIMULATION PAUSED ***");
     }
 }

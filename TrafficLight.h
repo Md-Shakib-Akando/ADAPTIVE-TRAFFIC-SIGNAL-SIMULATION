@@ -22,6 +22,7 @@ public:
     void update(float dt, int countNorth, int countSouth, int countEast, int countWest);
     void toggleMode();
     void setMode(ControlMode newMode);
+    void setPhase(SignalPhase newPhase, float duration);
 
     bool isNorthSouthGreen() const;
     bool isEastWestGreen() const;

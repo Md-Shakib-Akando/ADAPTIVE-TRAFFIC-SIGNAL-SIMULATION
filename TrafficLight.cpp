@@ -30,6 +30,12 @@ void TrafficLightController::setMode(ControlMode newMode) {
     mode = newMode;
 }
 
+void TrafficLightController::setPhase(SignalPhase newPhase, float duration) {
+    currentPhase = newPhase;
+    phaseDuration = duration;
+    timeRemaining = duration;
+}
+
 bool TrafficLightController::isNorthSouthGreen() const {
     return (currentPhase == PHASE_NS_GREEN);
 }

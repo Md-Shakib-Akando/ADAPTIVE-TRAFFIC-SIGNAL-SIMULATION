@@ -65,6 +65,12 @@ int main() {
                 intersection.triggerBurstSpawn(simulationTime);
             } else if (uKey == 'C') {
                 intersection.clearAllVehicles();
+            } else if (uKey == 'D') {
+                intersection.forceDeadlockScenario(simulationTime);
+            } else if (uKey == 'R') {
+                intersection.resolveDeadlock();
+            } else if (uKey == 'X') {
+                intersection.toggleAntiDeadlockGuard();
             } else if (uKey == 'P') {
                 isPaused = !isPaused;
             }
@@ -90,6 +96,7 @@ int main() {
         hud.drawScenery();
         hud.drawDetectionZones(intersection);
         intersection.drawVehicles();
+        hud.drawDeadlockOverlay(intersection);
         hud.drawTrafficLights(intersection.lightController);
         hud.drawDashboard(intersection, currentFPS, isPaused);
 
