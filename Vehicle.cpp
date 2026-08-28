@@ -185,10 +185,10 @@ float Vehicle::getRearBumperPos() const {
 bool Vehicle::checkPassedStopLine() const {
     float bumper = getFrontBumperPos();
     switch (dir) {
-        case DIR_SOUTH: return bumper >= STOP_LINE_SOUTH;
-        case DIR_NORTH: return bumper <= STOP_LINE_NORTH;
-        case DIR_EAST:  return bumper >= STOP_LINE_EAST;
-        case DIR_WEST:  return bumper <= STOP_LINE_WEST;
+        case DIR_SOUTH: return bumper >= (STOP_LINE_SOUTH - 15.0f);
+        case DIR_NORTH: return bumper <= (STOP_LINE_NORTH + 15.0f);
+        case DIR_EAST:  return bumper >= (STOP_LINE_EAST - 15.0f);
+        case DIR_WEST:  return bumper <= (STOP_LINE_WEST + 15.0f);
     }
     return false;
 }
@@ -221,13 +221,13 @@ bool Vehicle::checkInDetectionZone() const {
     float front = getFrontBumperPos();
     switch (dir) {
         case DIR_SOUTH:
-            return (front >= (STOP_LINE_SOUTH - DETECTION_ZONE_LENGTH)) && (front <= STOP_LINE_SOUTH);
+            return (front >= (STOP_LINE_SOUTH - DETECTION_ZONE_LENGTH)) && (front <= (STOP_LINE_SOUTH - 15.0f));
         case DIR_NORTH:
-            return (front <= (STOP_LINE_NORTH + DETECTION_ZONE_LENGTH)) && (front >= STOP_LINE_NORTH);
+            return (front <= (STOP_LINE_NORTH + DETECTION_ZONE_LENGTH)) && (front >= (STOP_LINE_NORTH + 15.0f));
         case DIR_EAST:
-            return (front >= (STOP_LINE_EAST - DETECTION_ZONE_LENGTH)) && (front <= STOP_LINE_EAST);
+            return (front >= (STOP_LINE_EAST - DETECTION_ZONE_LENGTH)) && (front <= (STOP_LINE_EAST - 15.0f));
         case DIR_WEST:
-            return (front <= (STOP_LINE_WEST + DETECTION_ZONE_LENGTH)) && (front >= STOP_LINE_WEST);
+            return (front <= (STOP_LINE_WEST + DETECTION_ZONE_LENGTH)) && (front >= (STOP_LINE_WEST + 15.0f));
     }
     return false;
 }
@@ -263,12 +263,14 @@ void Vehicle::update(float dt, float distToAhead, float distToStopLine, bool isG
         }
     }
 
-    // 2. Traffic Light & Stop Line Behavior
+    // 2. Traffic Light & Stop Line Behavior (Stops safely inside sensor box before white line)
+    const float STOP_OFFSET = 26.0f; // Safe gap before white stop line & zebra crossing
     if (!hasPassedStopLine && !isGreen) {
-        if (distToStopLine > 0.0f && distToStopLine < 160.0f) {
-            float stopSpeed = std::max(0.0f, (distToStopLine - 4.0f) / 12.0f);
+        float effectiveDistToStop = distToStopLine - STOP_OFFSET;
+        if (effectiveDistToStop > 0.0f && effectiveDistToStop < 160.0f) {
+            float stopSpeed = std::max(0.0f, effectiveDistToStop / 12.0f);
             desiredSpeed = std::min(desiredSpeed, stopSpeed);
-        } else if (distToStopLine <= 0.0f) {
+        } else if (effectiveDistToStop <= 0.0f) {
             desiredSpeed = 0.0f;
         }
     }

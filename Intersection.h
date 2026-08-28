@@ -5,6 +5,12 @@
 #include "Vehicle.h"
 #include "TrafficLight.h"
 
+enum TrafficFlowRate {
+    FLOW_LOW,     // Low traffic (quiet)
+    FLOW_MEDIUM,  // Moderate traffic (regular)
+    FLOW_HIGH     // Heavy rush (burst / jam)
+};
+
 class IntersectionManager {
 public:
     std::vector<Vehicle> vehicles;
@@ -13,6 +19,8 @@ public:
     int nextVehicleId;
     float spawnTimers[4];
     float spawnIntervals[4];
+    TrafficFlowRate flowRates[4];
+    float flowShuffleTimer;
 
     // Detection Zone Live Vehicle Counts
     int countSouth; // Vehicles heading South in top detection zone

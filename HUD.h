@@ -15,7 +15,13 @@ public:
     void drawDeadlockOverlay(const IntersectionManager& manager) const;
 
 private:
-    void drawTrafficLightBox(int x, int y, bool isRed, bool isYellow, bool isGreen) const;
+    void drawTrafficLightPost(int poleX, int poleY, int boxX, int boxY,
+                              bool isRed, bool isYellow, bool isGreen,
+                              const char* directionLabel, float timeRemaining, bool isHorizontal = false) const;
+    void drawTree(int x, int y, int radius) const;
+    void drawStreetLight(int x, int y, bool onLeft) const;
+    void drawDirectionArrow(int x, int y, Direction dir) const;
 };
 
 #endif // HUD_H
+

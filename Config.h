@@ -23,8 +23,9 @@ const int ROAD_BOTTOM = CENTER_Y + ROAD_WIDTH / 2; // 455
 // Lane Centerlines
 const int LANE_SOUTH_X = CENTER_X - LANE_WIDTH / 2; // 315 (Top approach, moving down)
 const int LANE_NORTH_X = CENTER_X + LANE_WIDTH / 2; // 395 (Bottom approach, moving up)
-const int LANE_EAST_Y  = CENTER_Y - LANE_WIDTH / 2; // 335 (Left approach, moving right)
-const int LANE_WEST_Y  = CENTER_Y + LANE_WIDTH / 2; // 415 (Right approach, moving left)
+const int LANE_EAST_Y  = CENTER_Y + LANE_WIDTH / 2; // 415 (Left approach, bottom lane moving right)
+const int LANE_WEST_Y  = CENTER_Y - LANE_WIDTH / 2; // 335 (Right approach, top lane moving left)
+
 
 // Stop Lines (where vehicles stop when signal is red)
 const int STOP_LINE_SOUTH = ROAD_TOP;    // Y = 295

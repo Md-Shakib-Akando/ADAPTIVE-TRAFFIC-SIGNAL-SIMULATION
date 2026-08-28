@@ -3,7 +3,7 @@
 #include <cmath>
 
 IntersectionManager::IntersectionManager()
-    : nextVehicleId(1), countSouth(0), countNorth(0), countEast(0), countWest(0),
+    : nextVehicleId(1), flowShuffleTimer(0.0f), countSouth(0), countNorth(0), countEast(0), countWest(0),
       totalClearedVehicles(0), totalAccumulatedWaitTime(0.0), autoSpawnEnabled(true),
       isDeadlocked(false), deadlockDuration(0.0f), deadlocksDetectedCount(0),
       deadlocksResolvedCount(0), boxOccupantCount(0), antiDeadlockGuard(true),
@@ -11,7 +11,15 @@ IntersectionManager::IntersectionManager()
 
     for (int i = 0; i < 4; ++i) {
         spawnTimers[i] = 0.0f;
-        spawnIntervals[i] = 2.5f + (rand() % 20) / 10.0f; // 2.5s - 4.5s random interval
+        // Diverse initial flow distribution: high, medium, low
+        flowRates[i] = static_cast<TrafficFlowRate>(i % 3);
+        if (flowRates[i] == FLOW_HIGH) {
+            spawnIntervals[i] = 1.3f + (rand() % 6) / 10.0f; // 1.3s - 1.9s (burst rush)
+        } else if (flowRates[i] == FLOW_MEDIUM) {
+            spawnIntervals[i] = 2.5f + (rand() % 15) / 10.0f; // 2.5s - 4.0s (regular)
+        } else {
+            spawnIntervals[i] = 5.5f + (rand() % 30) / 10.0f; // 5.5s - 8.5s (quiet)
+        }
     }
 }
 
@@ -99,10 +107,10 @@ bool IntersectionManager::handleMouseClick(int mx, int my, double currentTime) {
     if (mx >= CENTER_X && mx <= ROAD_RIGHT && my >= ROAD_BOTTOM) {
         return spawnVehicle(DIR_NORTH, currentTime);
     }
-    if (mx <= ROAD_LEFT && my >= ROAD_TOP && my <= CENTER_Y) {
+    if (mx <= ROAD_LEFT && my >= CENTER_Y && my <= ROAD_BOTTOM) {
         return spawnVehicle(DIR_EAST, currentTime);
     }
-    if (mx >= ROAD_RIGHT && my >= CENTER_Y && my <= ROAD_BOTTOM) {
+    if (mx >= ROAD_RIGHT && my >= ROAD_TOP && my <= CENTER_Y) {
         return spawnVehicle(DIR_WEST, currentTime);
     }
     return false;
@@ -291,14 +299,38 @@ void IntersectionManager::toggleAntiDeadlockGuard() {
 // ---------------------- Main Update Cycle ----------------------
 
 void IntersectionManager::update(float dt, double currentTime) {
-    // 1. Automatic Vehicle Spawning
+    // 1. Periodic Dynamic Traffic Flow Shuffling (High, Medium, Low Waves)
+    flowShuffleTimer += dt;
+    if (flowShuffleTimer >= 10.0f) {
+        flowShuffleTimer = 0.0f;
+        // Randomly shuffle traffic intensity across 4 roads
+        for (int d = 0; d < 4; ++d) {
+            int roll = rand() % 100;
+            if (roll < 35) {
+                flowRates[d] = FLOW_HIGH;   // 35% chance: High Traffic Rush
+            } else if (roll < 75) {
+                flowRates[d] = FLOW_MEDIUM; // 40% chance: Moderate Traffic
+            } else {
+                flowRates[d] = FLOW_LOW;    // 25% chance: Light Traffic
+            }
+        }
+    }
+
+    // 2. Automatic Vehicle Spawning based on Shuffled Flow Rates
     if (autoSpawnEnabled && !isDeadlocked) {
         for (int d = 0; d < 4; ++d) {
             spawnTimers[d] += dt;
             if (spawnTimers[d] >= spawnIntervals[d]) {
                 if (spawnVehicle(static_cast<Direction>(d), currentTime)) {
                     spawnTimers[d] = 0.0f;
-                    spawnIntervals[d] = 2.0f + (rand() % 35) / 10.0f; // 2.0s - 5.5s
+                    // Reset next interval according to current direction's flow rate
+                    if (flowRates[d] == FLOW_HIGH) {
+                        spawnIntervals[d] = 1.2f + (rand() % 8) / 10.0f; // 1.2s - 2.0s (Fast Rush)
+                    } else if (flowRates[d] == FLOW_MEDIUM) {
+                        spawnIntervals[d] = 2.6f + (rand() % 16) / 10.0f; // 2.6s - 4.2s (Medium)
+                    } else {
+                        spawnIntervals[d] = 5.5f + (rand() % 35) / 10.0f; // 5.5s - 9.0s (Low)
+                    }
                 }
             }
         }
