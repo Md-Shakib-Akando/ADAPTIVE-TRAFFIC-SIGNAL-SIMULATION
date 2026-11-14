@@ -18,7 +18,9 @@ private:
     void drawTrafficLightPost(int poleX, int poleY, int boxX, int boxY,
                               bool isRed, bool isYellow, bool isGreen,
                               const char* directionLabel, float timeRemaining, bool isHorizontal = false) const;
-    void drawTree(int x, int y, int radius) const;
+    void renderStaticScenery() const;   // Full static background (drawn once, then cached)
+    void drawGreenAreas() const;        // Landscaped parks in the 4 grass quadrants
+    void drawRoadSigns() const;         // Green approach name boards on the lawns
     void drawStreetLight(int x, int y, bool onLeft) const;
     void drawDirectionArrow(int x, int y, Direction dir) const;
 };
